@@ -21,8 +21,9 @@
   },
   "dependencies": {
     "body-parser": "^1.17.2",
-    "express": "^4.15.3",
-    "mongoose": "^5.4.18",
+    "express": "^4.18.2",
+    "express-async-handler": "^1.2.0",
+    "mongoose": "^5.13.15",
     "nodemon": "^1.11.0"
   }
 }

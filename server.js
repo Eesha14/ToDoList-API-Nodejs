@@ -9,10 +9,14 @@ var express = require('express'),
 var app = express();
 
 // Use environment defined port or 4000
-var port = process.env.PORT || 4000;
+var port = process.env.PORT || 5000;
+
+const taskRoute = require('./routes/tasks');
+
+const userRoute = require('./routes/users');
 
 // Connect to a MongoDB --> Uncomment this once you have a connection string!!
-//mongoose.connect(secrets.mongo_connection,  { useNewUrlParser: true });
+mongoose.connect(secrets.mongo_connection,  { useNewUrlParser: true });
 
 // Allow CORS so that backend and frontend could be put on different servers
 var allowCrossDomain = function (req, res, next) {
@@ -32,6 +36,10 @@ app.use(bodyParser.json());
 // Use routes as a module (see index.js)
 require('./routes')(app, router);
 
+app.use('/api/tasks',taskRoute);
+app.use('/api/users',userRoute);
+
 // Start the server
 app.listen(port);
 console.log('Server running on port ' + port);
+

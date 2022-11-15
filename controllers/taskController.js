@@ -18,36 +18,6 @@ exports.createTask = asyncHandler(async (req,res) => {
     if (req.body.dateCreated) {
         delete req.body.dateCreated;
     }
-    if( req.body.assignedUser != ""){
-        const user = await User.findOne({_id:req.body.assignedUser});
-        if(!user){
-            res.status(404).json({
-                message: 'Plese set the assignedUser id correctly as no such user exists',
-                data: {}
-            })
-        }
-        if(user.name != req.body.assignedUserName){
-            res.status(404).json({
-                message: 'The assignedUserName do not belong to same user.',
-                data: {}
-            })
-        }
-    }
-    if(req.body.assignedUserName != ""){
-        const user = await User.findOne({name:req.body.assignedUserName});
-        if(!user){
-            res.status(404).json({
-                message: 'Plese set the assignedUserName correctly as no such user exists',
-                data: {}
-            })
-        }
-        if(user._id != req.body.assignedUser){
-            res.status(404).json({
-                message: 'The assignedUser ID do not belong to same user.',
-                data: {}
-            })
-        }
-    }
         const {name, description, deadline, completed, assignedUser, assignedUserName} = req.body;
         const dateCreated = new Date();
         const task =  Task.create({name, description, deadline, completed, assignedUser,assignedUserName, dateCreated}, function (err, task) {
@@ -63,15 +33,12 @@ exports.createTask = asyncHandler(async (req,res) => {
                     res.status(404).json({
                         message: 'Error occured in creating the task',
                         data: {}
-                    })
+                    });
                 }
             }
             if (task.assignedUser) {
-                console.log("The task assigned user is: "+ task.assignedUser);
                 const user = User.findOne({_id : task.assignedUser}, function(err, user){
-                    console.log("The user is: "+ user);
                     if (user) {
-                        console.log("The current pending tasks is: "+ user.pendingTasks);
                         user.pendingTasks.push(task._id);
                         user.save();
                         res.status(200).json({
@@ -79,7 +46,6 @@ exports.createTask = asyncHandler(async (req,res) => {
                             data: task
                         })
                     }else{
-                        console.log('This assignedUser does not exist.');
                         task.assignedUser = "";
                         task.assignedUserName = "unassigned";
                         task.save();
@@ -114,23 +80,80 @@ exports.createTask = asyncHandler(async (req,res) => {
  */
 
  exports.updateTask = asyncHandler(async (req,res) => {
+    if (req.body._id) {
+        delete req.body._id;
+    }
     const {name, deadline} = req.body;
     if (name && deadline) {
-             const existTask = await Task.findOne({_id: req.params.id});
-             if(existTask){
-                const updatedTask = await Task.updateOne({_id: req.params.id}, {$set : req.body});
-                const fin_data = await Task.findOne({_id: req.params.id})
-                res.status(200).json({
-                    data: fin_data,
-                    message: 'Task is updated successfully.'
-                })
-            }
-            else{
-                res.status(404).json({
-                    message: 'Task Not Found',
-                    data: null
-                })
-            }
+             const existTask = Task.findOne({_id: req.params.id}, function(err, existTask){
+                if(existTask){
+                    //console.log("Exist task"+ existTask);
+                    if(existTask.assignedUser!="" && existTask.assignedUserName!=req.body.assignedUserName){
+                        const old_user = User.findOne({_id:mongoose.Types.ObjectId(existTask.assignedUser)}, function(err, old_user){
+                            //console.log("Old user "+ old_user);
+                                const index = old_user.pendingTasks.indexOf(req.params.id);
+                                if (index > -1) { 
+                                    old_user.pendingTasks.splice(index, 1); 
+                                }
+                                console.log("Old user updated pending tasks. "+ old_user.pendingTasks);
+                                const update_old_user = User.updateOne({_id: old_user._id}, {$set : {"pendingTasks": old_user.pendingTasks} }).then(
+                                    (result) => {
+                                        console.log(result);
+                                    }
+                                );
+                         });
+                        }
+                    if(req.body.assignedUser || req.body.assignedUserName){
+                        
+                        const new_user = User.findOne({_id:mongoose.Types.ObjectId(req.body.assignedUser)}, function(err, new_user){
+                            //console.log("New User "+ new_user)
+        
+                                    if(new_user && (new_user.name == req.body.assignedUserName)){
+                                        const new_pending = new_user.pendingTasks.push(req.params.id);
+                                        const update_user = User.updateOne({_id: new_user._id}, {$set : {"pendingTasks": new_user.pendingTasks} }).then(
+                                            (result) => {
+                                                console.log(result);
+                                            }
+                                        );
+                                       }
+                                    else{
+                                        res.status(404).json({
+                                            message: 'Task cannot be updated as that user does not exist.',
+                                            data: {}
+                                        });
+                                    }
+
+                        });
+                        const updatedTask = Task.updateOne({_id: req.params.id}, {$set : req.body}).then(
+                            (result) => {
+                                console.log(result);
+                                res.status(200).json({
+                                    message: 'Task is updated successfully and added to the users pending task list if the status of completed is false',
+                                    data: {}
+                                });
+                            }
+                        );
+                    }
+                    else{
+                    const updatedTask = Task.updateOne({_id: req.params.id}, {$set : req.body}).then(
+                        (result) => {
+                            console.log(result);
+                            res.status(200).json({
+                                data: {},
+                                message: 'Task is updated successfully.'
+                            })
+                        }
+                    );
+                 }
+                }
+                else{
+                    res.status(404).json({
+                        message: 'Task Not Found',
+                        data: null
+                    })
+                }
+             });
+             
     }else{
         res.status(404).json({
             message: 'To replace the task, name and deadline is required.',
@@ -150,30 +173,13 @@ exports.createTask = asyncHandler(async (req,res) => {
 exports.deleteTask = asyncHandler(async (req,res) => {
     const existTask = await Task.findOne({_id: req.params.id});
     if(existTask){
-        const user = await User.findOne({_id: existTask.assignedUser});
-        if(user){
-            const index = user.pendingTasks.indexOf(req.params.id);
-            if (index > -1) { // only splice array when item is found
-                var result = user.pendingTasks.filter(function(x) {
-                    return x !== req.params.id;
-                });
-            }
-            console.log("Users updated pending tasks "+ result);
-            const updatedUser = await User.updateOne({_id: existTask.assignedUser}, {pendingTasks: result});
-            const fin_data = await User.findOne({_id: req.params.id})
+            const updatedUser = await User.updateOne({ pendingTasks: { $elemMatch: { $eq: req.params.id} }},
+                { $pullAll: { pendingTasks: [req.params.id] } });
             await existTask.remove();
             res.status(200).json({
                 message: 'Task is deleted successfully and removed from the assignedUser pendingtasks',
-                data : fin_data
-            })
-        }else{
-            await existTask.remove();
-            res.status(200).json({
-                message: 'Task is deleted successfully and assignedUser did not exist for this task',
-                data : user
-            })
-        }
-        
+                data : {}
+            });
     }
     else{
         res.status(404).json({
@@ -230,31 +236,12 @@ exports.deleteTask = asyncHandler(async (req,res) => {
                 }
     }
     else{
-        const tasks = await Task.find(getParam(req.query.where), function (err, docs) {
-            if (err) {
-                if (err.name === 'CastError' && err.path === '_id') {
-                    res.status(500).json({
-                        message: 'The _id entered in the query, cannot not be casted to ObjectID in mongoose',
-                        data: {}
-                    })
-                } else if (err.name === 'CastError') {
-                    res.status(500).json({
-                        message: 'Check the casting of the fields in the request. One of them might be wrong',
-                        data: {}
-                    })
-    
-                } else {
-                    res.status(500).json({
-                        message: 'Server error',
-                        data: {}
-                    })
-                }
-            }})
+        const tasks = await Task.find(getParam(req.query.where))
             .select(getParam(req.query.select))
             .skip(parseInt(req.query.skip))
             .sort(getParam(req.query.sort))
             .limit(parseInt(req.query.limit))
-            console.log("Task skip "+tasks)
+           // console.log("Task skip "+tasks)
         if(tasks !== undefined && tasks.length !== 0){
             res.status(201).json({
                 message: "Fetched all tasks based on queries sent",
